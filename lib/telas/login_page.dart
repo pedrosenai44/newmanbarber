@@ -1,9 +1,73 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:newmanbarber/telas/home_page.dart';
-import 'package:newmanbarber/telas/signup_page.dart'; // Import the new sign-up page
+import 'package:newmanbarber/telas/signup_page.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  // Controllers to capture user input
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  bool _isLoading = false;
+
+  Future<void> _signIn() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Attempt to sign in with Firebase
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      // If successful, navigate to HomePage
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomePage()),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      // Handle login errors
+      String message;
+      if (e.code == 'user-not-found') {
+        message = 'Usuário não encontrado.';
+      } else if (e.code == 'wrong-password') {
+        message = 'Senha incorreta.';
+      } else if (e.code == 'invalid-email') {
+        message = 'Email inválido.';
+      } else if (e.code == 'invalid-credential') {
+        message = 'Credenciais inválidas. Verifique seu email e senha.';
+      } else {
+        message = 'Erro ao fazer login. Tente novamente.';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ocorreu um erro inesperado.'), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +109,7 @@ class LoginPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 48),
                 TextField(
+                  controller: _emailController,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
@@ -59,6 +124,7 @@ class LoginPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 TextField(
+                  controller: _passwordController,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
@@ -73,12 +139,7 @@ class LoginPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const HomePage()),
-                    );
-                  },
+                  onPressed: _isLoading ? null : _signIn,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade100.withOpacity(0.8),
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -86,10 +147,12 @@ class LoginPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontSize: 18, color: Colors.black87),
-                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : const Text(
+                          'Login',
+                          style: TextStyle(fontSize: 18, color: Colors.black87),
+                        ),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
@@ -104,7 +167,7 @@ class LoginPage extends StatelessWidget {
                   children: [
                     const Text("Não tem uma conta?"),
                     TextButton(
-                      onPressed: () { // Navigate to the SignUpPage
+                      onPressed: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(builder: (context) => const SignUpPage()),

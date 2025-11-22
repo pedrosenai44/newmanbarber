@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "647188592588",
+    "project_id": "newmanbarber-d0c3a",
+    "storage_bucket": "newmanbarber-d0c3a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:647188592588:android:060d4853fb55a017654f69",
+        "android_client_info": {
+          "package_name": "NewManBarber.pedro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwsdvAUyrb9DmhopDntpAHWt5x-7emdbw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

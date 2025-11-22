@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:newmanbarber/telas/login_page.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:newmanbarber/auth_gate.dart'; // Import the new AuthGate
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -15,10 +18,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        fontFamily: 'sans-serif', // Setting a default font
+        fontFamily: 'sans-serif',
       ),
       debugShowCheckedModeBanner: false,
-      home: const LoginPage(),
+      home: const AuthGate(), // Use AuthGate as the starting point
     );
   }
 }
