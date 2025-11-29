@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import 'package:newmanbarber/telas/login_page.dart';
+import 'package:newmanbarber/telas/admin/manage_barbers_page.dart'; // Importar a página de admin
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -17,6 +18,26 @@ class ProfilePage extends StatelessWidget {
     }
   }
 
+  // Função para cancelar agendamento
+  Future<void> _cancelAppointment(String appointmentId, BuildContext context) async {
+    try {
+      await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).update({
+        'status': 'Cancelado',
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Agendamento cancelado.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erro ao cancelar agendamento.')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final User? user = FirebaseAuth.instance.currentUser;
@@ -25,7 +46,7 @@ class ProfilePage extends StatelessWidget {
       return const Center(child: Text("Usuário não logado"));
     }
 
-    // StreamBuilder to listen for real-time updates from Firestore
+    // StreamBuilder to listen for real-time updates from Firestore (USER PROFILE)
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
       builder: (context, snapshot) {
@@ -46,7 +67,9 @@ class ProfilePage extends StatelessWidget {
         final String userName = userData?['name'] ?? user.displayName ?? 'Usuário';
         final String userEmail = userData?['email'] ?? user.email ?? 'Sem email';
         final String userPhone = userData?['phone'] ?? 'Telefone não cadastrado';
-        final String userRole = userData?['role'] == 'admin' ? 'Administrador' : 'Cliente';
+        // Verificar role diretamente do banco
+        final bool isAdmin = userData?['role'] == 'admin';
+        final String userRoleDisplay = isAdmin ? 'Administrador' : 'Cliente';
 
         return Scaffold(
           appBar: AppBar(
@@ -87,7 +110,7 @@ class ProfilePage extends StatelessWidget {
                           userName,
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                         ),
-                        Text(userRole, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                        Text(userRoleDisplay, style: const TextStyle(fontSize: 16, color: Colors.grey)),
                         const Divider(height: 32),
                         ListTile(
                           leading: const Icon(Icons.email_outlined),
@@ -97,6 +120,27 @@ class ProfilePage extends StatelessWidget {
                           leading: const Icon(Icons.phone_outlined),
                           title: Text(userPhone),
                         ),
+                        
+                        // BOTÃO DE ADMIN (Só aparece se for admin)
+                        if (isAdmin) ...[
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const ManageBarbersPage()),
+                              );
+                            },
+                            icon: const Icon(Icons.admin_panel_settings, color: Colors.white),
+                            label: const Text('Gerenciar Barbeiros', style: TextStyle(color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange, // Cor diferente para destacar
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ],
+
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
                           onPressed: () => _logout(context),
@@ -114,17 +158,125 @@ class ProfilePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // --- SEÇÃO DE AGENDAMENTOS ---
+                // --- SEÇÃO DE AGENDAMENTOS (AGORA CONECTADA AO FIREBASE) ---
                 const Text('Meus Agendamentos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                 const SizedBox(height: 8),
                 
-                // Aqui futuramente faremos outra consulta ao Firebase para os agendamentos
-                _buildEmptyState(),
+                // StreamBuilder para ler agendamentos
+                StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('appointments')
+                      .where('userId', isEqualTo: user.uid) // Filtra pelo usuário atual
+                      .orderBy('createdAt', descending: true) // Ordena do mais novo para o mais antigo
+                      .snapshots(),
+                  builder: (context, appointmentSnapshot) {
+                    if (appointmentSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (!appointmentSnapshot.hasData || appointmentSnapshot.data!.docs.isEmpty) {
+                      return _buildEmptyState();
+                    }
+
+                    final appointments = appointmentSnapshot.data!.docs;
+
+                    return Column(
+                      children: appointments.map((doc) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        final appointmentId = doc.id;
+                        return _buildAppointmentCard(data, appointmentId, context);
+                      }).toList(),
+                    );
+                  },
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  // Widget para exibir cada agendamento
+  Widget _buildAppointmentCard(Map<String, dynamic> data, String appointmentId, BuildContext context) {
+    final String status = data['status'] ?? 'Confirmado';
+    final bool isCancelled = status == 'Cancelado';
+    
+    // Formatar data (supondo que salvamos como string ISO ou timestamp)
+    String formattedDate = data['date']?.toString().split('T')[0] ?? 'Data inválida'; // Simplificação
+    
+    // Tenta formatar melhor se possível, aqui pegamos a parte da data da string ISO
+    if (data['date'] is String && data['date'].contains('T')) {
+       final DateTime dateTime = DateTime.parse(data['date']);
+       formattedDate = "${dateTime.day}/${dateTime.month}/${dateTime.year}";
+    }
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 4,
+      margin: const EdgeInsets.only(bottom: 16), // Espaço entre cards
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(data['serviceName'] ?? 'Serviço', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isCancelled ? Colors.red.shade100 : Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    status, 
+                    style: TextStyle(
+                      color: isCancelled ? Colors.red : Colors.green, 
+                      fontWeight: FontWeight.bold
+                    )
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            ListTile(
+              leading: const Icon(Icons.person_outline), 
+              title: Text(data['barberName'] ?? 'Barbeiro'), 
+              dense: true, 
+              visualDensity: const VisualDensity(vertical: -4)
+            ),
+            ListTile(
+              leading: const Icon(Icons.calendar_today_outlined), 
+              title: Text(formattedDate), 
+              dense: true, 
+              visualDensity: const VisualDensity(vertical: -4)
+            ),
+            ListTile(
+              leading: const Icon(Icons.access_time_outlined), 
+              title: Text(data['time'] ?? 'Horário'), 
+              dense: true, 
+              visualDensity: const VisualDensity(vertical: -4)
+            ),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(data['servicePrice'] ?? 'R\$ --', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                
+                // Botão Cancelar (só aparece se não estiver cancelado)
+                if (!isCancelled)
+                  OutlinedButton(
+                    onPressed: () => _cancelAppointment(appointmentId, context),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
+                    child: const Text('Cancelar'),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 

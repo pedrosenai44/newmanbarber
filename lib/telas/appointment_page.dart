@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Importação do Firestore
+import 'package:firebase_auth/firebase_auth.dart'; // Importação da Autenticação
 import 'package:newmanbarber/telas/home_page.dart';
 
 // --- Data Models ---
@@ -49,12 +51,13 @@ class _AppointmentPageState extends State<AppointmentPage> {
   ];
 
   // --- Variáveis de Estado do Agendamento ---
-  int _currentStep = 0; // 0: Barbeiro, 1: Data, 2: Horário, 3: Resumo
+  int _currentStep = 0;
   Barber? _selectedBarber;
   DateTime? _selectedDate;
   String? _selectedTime;
+  bool _isSaving = false; // Para mostrar loading
 
-  // Horários disponíveis (Exemplo)
+  // Horários disponíveis
   final List<String> _timeSlots = [
     '09:00', '09:30', '10:00', '10:30', '11:00',
     '13:00', '13:30', '14:00', '14:30', '15:00',
@@ -82,15 +85,50 @@ class _AppointmentPageState extends State<AppointmentPage> {
     }
   }
 
-  void _confirmAppointment() {
-    // Aqui salvaremos no Firebase futuramente
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Agendamento Confirmado com Sucesso!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-    Navigator.pop(context); // Volta para a Home
+  Future<void> _confirmAppointment() async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Salva o agendamento no Firestore
+      await FirebaseFirestore.instance.collection('appointments').add({
+        'userId': user.uid,
+        'userName': user.displayName ?? 'Cliente', // Opcional, facilita pro admin
+        'serviceName': widget.service.name,
+        'servicePrice': widget.service.price,
+        'barberName': _selectedBarber!.name,
+        'date': _selectedDate!.toIso8601String(), // Salva data como string ISO
+        'time': _selectedTime,
+        'status': 'Confirmado', // Status inicial
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Agendamento Confirmado com Sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context); // Volta para a Home
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao agendar: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 
   // --- Construção da Tela ---
@@ -107,50 +145,50 @@ class _AppointmentPageState extends State<AppointmentPage> {
           onPressed: _prevStep,
         ),
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.blue.shade300, Colors.white],
-            stops: const [0.1, 0.6],
-          ),
-        ),
-        child: Column(
-          children: [
-            // Indicador de Passos
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildStepIndicator(0, 'Barbeiro'),
-                  _buildLine(),
-                  _buildStepIndicator(1, 'Data'),
-                  _buildLine(),
-                  _buildStepIndicator(2, 'Horário'),
-                ],
+      body: _isSaving 
+        ? const Center(child: CircularProgressIndicator())
+        : Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.blue.shade300, Colors.white],
+                stops: const [0.1, 0.6],
               ),
             ),
-            
-            // Conteúdo Variável
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 16.0),
-                padding: const EdgeInsets.all(16.0),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildStepIndicator(0, 'Barbeiro'),
+                      _buildLine(),
+                      _buildStepIndicator(1, 'Data'),
+                      _buildLine(),
+                      _buildStepIndicator(2, 'Horário'),
+                    ],
+                  ),
                 ),
-                child: _buildCurrentStepContent(),
-              ),
+                
+                Expanded(
+                  child: Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                    padding: const EdgeInsets.all(16.0),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, -5))],
+                    ),
+                    child: _buildCurrentStepContent(),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: Container(
+          ),
+      bottomNavigationBar: _isSaving ? null : Container(
         color: Colors.white,
         padding: const EdgeInsets.all(16.0),
         child: ElevatedButton(
@@ -302,7 +340,7 @@ class _AppointmentPageState extends State<AppointmentPage> {
         _buildSummaryRow(Icons.attach_money, 'Valor', widget.service.price),
         const Divider(),
         _buildSummaryRow(Icons.person, 'Barbeiro', _selectedBarber?.name ?? ''),
-        _buildSummaryRow(Icons.calendar_today, 'Data', _selectedDate.toString().split(' ')[0]),
+        _buildSummaryRow(Icons.calendar_today, 'Data', _selectedDate?.toLocal().toString().split(' ')[0] ?? ''),
         _buildSummaryRow(Icons.access_time, 'Horário', _selectedTime ?? ''),
       ],
     );

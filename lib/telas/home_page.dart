@@ -34,7 +34,7 @@ class _HomePageState extends State<HomePage> {
     Service(name: 'Corte Masculino', duration: '30 min', price: 'R\$ 25', imageUrl: 'https://www.styleseat.com/blog/wp-content/uploads/2021/09/barber-terms-hero-scaled-1-1140x850.jpg', category: 'Cortes'),
     Service(name: 'Barba Completa', duration: '20 min', price: 'R\$ 15', imageUrl: 'https://media.gettyimages.com/id/872361244/pt/foto/man-getting-his-beard-trimmed-with-electric-razor.jpg?s=2048x2048&w=gi&k=20&c=ndjW7M52LeGSslcjj_E6caOwQi78WCOYUiWpiuv5BhM=', category: 'Barba'),
     Service(name: 'Corte Infantil', duration: '25 min', price: 'R\$ 20', imageUrl: 'https://cdn.prod.website-files.com/5cb569e54ca2fddd5451cbb2/64ab496fde4797e734018c2f_Skin-Fade-Hero.jpg', category: 'Cortes'),
-    Service(name: 'Sobrancelha', duration: '10 min', price: 'R\$ 5', imageUrl: 'https://bluebarbearia.shop/img/sobrancelha.png', category: 'Especial'),
+    Service(name: 'Sobrancelha', duration: '10 min', price: 'R\$ 5', imageUrl: 'https://itboytrends.wordpress.com/wp-content/uploads/2017/12/salvardd.png', category: 'Especial'),
     Service(name: 'Corte e Barba', duration: '50 min', price: 'R\$ 40', imageUrl: 'https://peoplesbarber.com/wp-content/uploads/Peoples_02.jpg', category: 'Combos'),
   ];
 
