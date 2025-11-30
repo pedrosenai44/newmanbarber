@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class GerenciarBarbeirosPage extends StatefulWidget {
   const GerenciarBarbeirosPage({super.key});
@@ -9,28 +12,112 @@ class GerenciarBarbeirosPage extends StatefulWidget {
 }
 
 class _GerenciarBarbeirosPageState extends State<GerenciarBarbeirosPage> {
-  // Controladores de texto
   final TextEditingController _nomeController = TextEditingController();
-  final TextEditingController _fotoUrlController = TextEditingController();
+  
+  // Controle de Imagem
+  File? _imagemSelecionada;
+  String? _urlImagemExterna;
+  bool _enviando = false;
 
-  // Função para Adicionar Barbeiro ao Firebase
-  Future<void> _adicionarBarbeiro() async {
+  Future<void> _escolherImagem(ImageSource origem, StateSetter setStateDialog) async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? imagem = await picker.pickImage(source: origem, imageQuality: 50);
+      if (imagem != null) {
+        setStateDialog(() {
+          _imagemSelecionada = File(imagem.path);
+          _urlImagemExterna = null;
+        });
+      }
+    } catch (e) {
+      print("Erro ao selecionar imagem: $e");
+    }
+  }
+
+  // Adicionar Link Manualmente
+  Future<void> _adicionarLink(StateSetter setStateDialog) async {
+    final linkController = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adicionar Link da Foto'),
+        content: TextField(
+          controller: linkController,
+          decoration: const InputDecoration(
+            hintText: 'https://exemplo.com/foto.jpg',
+            labelText: 'URL da Foto',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (linkController.text.isNotEmpty) {
+                setStateDialog(() {
+                  _urlImagemExterna = linkController.text.trim();
+                  _imagemSelecionada = null;
+                });
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Upload para o Storage
+  Future<String> _obterUrlImagem() async {
+    if (_imagemSelecionada != null) {
+       try {
+        String nomeArquivo = DateTime.now().millisecondsSinceEpoch.toString();
+        Reference ref = FirebaseStorage.instance.ref().child('barbeiros/$nomeArquivo.jpg');
+        UploadTask task = ref.putFile(_imagemSelecionada!);
+        TaskSnapshot snapshot = await task;
+        return await snapshot.ref.getDownloadURL();
+      } catch (e) {
+        print("Erro upload: $e");
+        return '';
+      }
+    } 
+    else if (_urlImagemExterna != null && _urlImagemExterna!.isNotEmpty) {
+      return _urlImagemExterna!;
+    }
+    return '';
+  }
+
+  Future<void> _adicionarBarbeiro(StateSetter setStateDialog) async {
     if (_nomeController.text.isEmpty) return;
+
+    setStateDialog(() {
+      _enviando = true;
+    });
+
+    String urlFoto = await _obterUrlImagem();
 
     await FirebaseFirestore.instance.collection('barbeiros').add({
       'nome': _nomeController.text.trim(),
-      'foto': _fotoUrlController.text.trim(), // Se deixar vazio, tratamos na exibição
-      'avaliacao': 5.0, // Começa com 5 estrelas por padrão
+      'foto': urlFoto, 
+      'avaliacao': 5.0,
     });
 
     _nomeController.clear();
-    _fotoUrlController.clear();
-    if (mounted) Navigator.of(context).pop(); // Fecha o diálogo
+    _imagemSelecionada = null;
+    _urlImagemExterna = null;
+    
+    setStateDialog(() {
+      _enviando = false;
+    });
+
+    if (mounted) Navigator.of(context).pop(); 
   }
 
-  // Função para Deletar Barbeiro
   Future<void> _deletarBarbeiro(String id) async {
-    // Pergunta antes de deletar para evitar acidentes
     bool confirmar = await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -54,43 +141,106 @@ class _GerenciarBarbeirosPageState extends State<GerenciarBarbeirosPage> {
     }
   }
 
-  // Janela flutuante para digitar os dados
   void _mostrarDialogoAdicionar() {
+    _imagemSelecionada = null; 
+    _urlImagemExterna = null;
+    _nomeController.clear();
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Novo Barbeiro'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _nomeController,
-              decoration: const InputDecoration(
-                labelText: 'Nome do Barbeiro',
-                icon: Icon(Icons.person),
-              ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          
+          ImageProvider? imageProvider;
+          if (_imagemSelecionada != null) {
+            imageProvider = FileImage(_imagemSelecionada!);
+          } else if (_urlImagemExterna != null && _urlImagemExterna!.isNotEmpty) {
+            imageProvider = NetworkImage(_urlImagemExterna!);
+          }
+
+          return AlertDialog(
+            title: const Text('Novo Barbeiro'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Stack(
+                      alignment: Alignment.bottomRight,
+                      children: [
+                        CircleAvatar(
+                          radius: 50,
+                          backgroundColor: Colors.grey.shade200,
+                          backgroundImage: imageProvider,
+                          child: imageProvider == null 
+                            ? const Icon(Icons.person, size: 50, color: Colors.grey) 
+                            : null,
+                        ),
+                        PopupMenuButton<String>(
+                          icon: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.blue,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                          ),
+                          onSelected: (opcao) {
+                            if (opcao == 'camera') _escolherImagem(ImageSource.camera, setStateDialog);
+                            if (opcao == 'galeria') _escolherImagem(ImageSource.gallery, setStateDialog);
+                            if (opcao == 'link') _adicionarLink(setStateDialog);
+                          },
+                          itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                            const PopupMenuItem<String>(
+                              value: 'camera',
+                              child: ListTile(leading: Icon(Icons.camera_alt), title: Text('Tirar Foto'), contentPadding: EdgeInsets.zero),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'galeria',
+                              child: ListTile(leading: Icon(Icons.photo_library), title: Text('Galeria'), contentPadding: EdgeInsets.zero),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'link',
+                              child: ListTile(leading: Icon(Icons.link), title: Text('Colar Link'), contentPadding: EdgeInsets.zero),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _nomeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome do Barbeiro',
+                    prefixIcon: Icon(Icons.person_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (_enviando) ...[
+                  const SizedBox(height: 20),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 10),
+                  const Text("Enviando imagem..."),
+                ]
+              ],
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _fotoUrlController,
-              decoration: const InputDecoration(
-                labelText: 'URL da Foto (Opcional)',
-                hintText: 'https://exemplo.com/foto.jpg',
-                icon: Icon(Icons.image),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: _adicionarBarbeiro,
-            child: const Text('Adicionar'),
-          ),
-        ],
+            actions: [
+              if (!_enviando)
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancelar'),
+                ),
+              if (!_enviando)
+                ElevatedButton(
+                  onPressed: () => _adicionarBarbeiro(setStateDialog),
+                  child: const Text('Adicionar'),
+                ),
+            ],
+          );
+        }
       ),
     );
   }
@@ -108,7 +258,6 @@ class _GerenciarBarbeirosPageState extends State<GerenciarBarbeirosPage> {
         backgroundColor: Colors.blue,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      // StreamBuilder escuta o banco de dados em tempo real
       body: StreamBuilder(
         stream: FirebaseFirestore.instance.collection('barbeiros').snapshots(),
         builder: (context, AsyncSnapshot<QuerySnapshot> snapshot) {
@@ -143,7 +292,6 @@ class _GerenciarBarbeirosPageState extends State<GerenciarBarbeirosPage> {
                 elevation: 3,
                 margin: const EdgeInsets.only(bottom: 10),
                 child: ListTile(
-                  // Mostra a foto se tiver URL, senão mostra um ícone padrão
                   leading: CircleAvatar(
                     radius: 25,
                     backgroundImage: (dados['foto'] != null && dados['foto'] != '')
@@ -161,7 +309,7 @@ class _GerenciarBarbeirosPageState extends State<GerenciarBarbeirosPage> {
                     children: [
                       const Icon(Icons.star, color: Colors.amber, size: 16),
                       const SizedBox(width: 4),
-                      Text(dados['avaliacao'].toString()),
+                      Text((dados['avaliacao'] ?? 5.0).toString()),
                     ],
                   ),
                   trailing: IconButton(
