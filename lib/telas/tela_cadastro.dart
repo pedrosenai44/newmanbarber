@@ -10,37 +10,37 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  // Controllers to read the text from the fields
-  final _nameController = TextEditingController();
+  // Controladores
+  final _nomeController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _senhaController = TextEditingController();
 
-  bool _isLoading = false;
+  bool _carregando = false;
 
-  Future<void> _signUp() async {
+  Future<void> _cadastrar() async {
     setState(() {
-      _isLoading = true;
+      _carregando = true;
     });
 
     try {
-      // Use Firebase Auth to create a new user
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      // Criar Auth
+      final credencial = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        password: _senhaController.text.trim(),
       );
 
-      // Optionally, update the user's display name
-      await credential.user?.updateDisplayName(_nameController.text.trim());
+      // Atualizar nome
+      await credencial.user?.updateDisplayName(_nomeController.text.trim());
 
-      // Save user data to Firestore (Users collection)
-      await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({
-        'name': _nameController.text.trim(),
+      // Salvar Firestore
+      await FirebaseFirestore.instance.collection('users').doc(credencial.user!.uid).set({
+        'name': _nomeController.text.trim(),
         'email': _emailController.text.trim(),
         'createdAt': FieldValue.serverTimestamp(),
         'role': 'client',
       });
 
-      // Show success message and pop the screen
+      // Sucesso
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cadastro realizado com sucesso!')),
@@ -48,23 +48,22 @@ class _SignUpPageState extends State<SignUpPage> {
         Navigator.of(context).pop();
       }
     } on FirebaseAuthException catch (e) {
-      // Handle specific Firebase errors
-      String message;
+      // Erros Firebase
+      String mensagem;
       if (e.code == 'weak-password') {
-        message = 'A senha é muito fraca.';
+        mensagem = 'A senha é muito fraca.';
       } else if (e.code == 'email-already-in-use') {
-        message = 'Este email já está em uso.';
+        mensagem = 'Este email já está em uso.';
       } else {
-        // AGORA VAI MOSTRAR O ERRO REAL NA TELA
-        message = 'Erro: ${e.message} (Código: ${e.code})';
+        mensagem = 'Erro: ${e.message} (Código: ${e.code})';
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
         );
       }
     } catch (e) {
-      // Handle other errors
+      // Outros erros
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro inesperado: $e'), backgroundColor: Colors.redAccent),
@@ -73,7 +72,7 @@ class _SignUpPageState extends State<SignUpPage> {
     }
 
     setState(() {
-      _isLoading = false;
+      _carregando = false;
     });
   }
 
@@ -112,7 +111,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 ),
                 const SizedBox(height: 48),
                 TextField(
-                  controller: _nameController,
+                  controller: _nomeController,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
@@ -139,7 +138,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: _passwordController,
+                  controller: _senhaController,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
@@ -153,7 +152,7 @@ class _SignUpPageState extends State<SignUpPage> {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _signUp,
+                  onPressed: _carregando ? null : _cadastrar,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade100.withOpacity(0.8),
                     padding: const EdgeInsets.symmetric(vertical: 16),
@@ -161,7 +160,7 @@ class _SignUpPageState extends State<SignUpPage> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: _isLoading
+                  child: _carregando
                       ? const CircularProgressIndicator()
                       : const Text(
                           'Cadastrar',

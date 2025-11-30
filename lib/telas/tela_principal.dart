@@ -1,23 +1,41 @@
 import 'package:flutter/material.dart';
-import 'package:newmanbarber/telas/appointment_page.dart';
-import 'package:newmanbarber/telas/login_page.dart';
-import 'package:newmanbarber/telas/profile_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:newmanbarber/telas/tela_agendamento.dart';
+import 'package:newmanbarber/telas/tela_login.dart';
+import 'package:newmanbarber/telas/tela_perfil.dart';
 
-// --- Data Model for a Service ---
-class Service {
-  final String name;
-  final String duration;
-  final String price;
-  final String imageUrl;
-  final String category;
+// Modelo
+class Servico {
+  final String id; // ID do documento no banco
+  final String nome;
+  final String duracao;
+  final String preco;
+  final String urlImagem;
+  final String categoria;
 
-  Service({
-    required this.name,
-    required this.duration,
-    required this.price,
-    required this.imageUrl,
-    required this.category,
+  Servico({
+    required this.id,
+    required this.nome,
+    required this.duracao,
+    required this.preco,
+    required this.urlImagem,
+    required this.categoria,
   });
+
+  // Converte
+  factory Servico.fromMap(Map<String, dynamic> map, String documentId) {
+    return Servico(
+      id: documentId,
+      nome: map['nome'] ?? 'Sem Nome',
+      duracao: map['duracao'] ?? '30 min',
+      preco: map['preco']?.toString() ?? 'R\$ 0,00',
+      // Imagem
+      urlImagem: (map['urlImagem'] != null && map['urlImagem'] != '')
+          ? map['urlImagem']
+          : 'https://cdn-icons-png.flaticon.com/512/2098/2098243.png',
+      categoria: map['categoria'] ?? 'Outros',
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
@@ -28,74 +46,44 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // --- State Variables ---
-
-  final List<Service> _allServices = [
-    Service(name: 'Corte Masculino', duration: '30 min', price: 'R\$ 25', imageUrl: 'https://www.styleseat.com/blog/wp-content/uploads/2021/09/barber-terms-hero-scaled-1-1140x850.jpg', category: 'Cortes'),
-    Service(name: 'Barba Completa', duration: '20 min', price: 'R\$ 15', imageUrl: 'https://media.gettyimages.com/id/872361244/pt/foto/man-getting-his-beard-trimmed-with-electric-razor.jpg?s=2048x2048&w=gi&k=20&c=ndjW7M52LeGSslcjj_E6caOwQi78WCOYUiWpiuv5BhM=', category: 'Barba'),
-    Service(name: 'Corte Infantil', duration: '25 min', price: 'R\$ 20', imageUrl: 'https://cdn.prod.website-files.com/5cb569e54ca2fddd5451cbb2/64ab496fde4797e734018c2f_Skin-Fade-Hero.jpg', category: 'Cortes'),
-    Service(name: 'Sobrancelha', duration: '10 min', price: 'R\$ 5', imageUrl: 'https://itboytrends.wordpress.com/wp-content/uploads/2017/12/salvardd.png', category: 'Especial'),
-    Service(name: 'Corte e Barba', duration: '50 min', price: 'R\$ 40', imageUrl: 'https://peoplesbarber.com/wp-content/uploads/Peoples_02.jpg', category: 'Combos'),
-  ];
-
-  List<Service> _displayedServices = [];
-  final TextEditingController _searchController = TextEditingController();
-  String _selectedFilter = 'Todos';
+  final TextEditingController _controladorBusca = TextEditingController();
+  String _filtroSelecionado = 'Todos';
+  String _textoBusca = '';
 
   @override
   void initState() {
     super.initState();
-    _displayedServices = List.from(_allServices);
-    _searchController.addListener(_updateDisplayedServices);
+    _controladorBusca.addListener(() {
+      setState(() {
+        _textoBusca = _controladorBusca.text.toLowerCase();
+      });
+    });
   }
 
   @override
   void dispose() {
-    _searchController.removeListener(_updateDisplayedServices);
-    _searchController.dispose();
+    _controladorBusca.dispose();
     super.dispose();
   }
 
-  // --- Logic Methods ---
-
-  void _updateDisplayedServices() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _displayedServices = _allServices.where((service) {
-        final matchesCategory = _selectedFilter == 'Todos' || service.category == _selectedFilter;
-        final matchesSearch = service.name.toLowerCase().contains(query);
-        return matchesCategory && matchesSearch;
-      }).toList();
-    });
-  }
-
-  void _onFilterSelected(String filter) {
-    setState(() {
-      _selectedFilter = filter;
-    });
-    _updateDisplayedServices();
-  }
-
-  void _handleMenuSelection(String result) {
-    if (result == 'logout') {
+  void _aoSelecionarMenu(String resultado, BuildContext context) {
+    if (resultado == 'sair') {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const LoginPage()),
-        (Route<dynamic> route) => false,
+        (route) => false,
       );
-    } else if (result == 'profile') {
+    } else if (resultado == 'perfil') {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (context) => const ProfilePage()),
       );
     }
   }
 
-  // --- Build Method ---
-
   @override
   Widget build(BuildContext context) {
-    final profileMenuItems = <PopupMenuEntry<String>>[
-      const PopupMenuItem<String>(value: 'profile', child: ListTile(leading: Icon(Icons.person), title: Text('Ver Perfil'))),
-      const PopupMenuItem<String>(value: 'logout', child: ListTile(leading: Icon(Icons.exit_to_app), title: Text('Sair'))),
+    final itensMenu = <PopupMenuEntry<String>>[
+      const PopupMenuItem<String>(value: 'perfil', child: ListTile(leading: Icon(Icons.person), title: Text('Ver Perfil'))),
+      const PopupMenuItem<String>(value: 'sair', child: ListTile(leading: Icon(Icons.exit_to_app), title: Text('Sair'))),
     ];
 
     return Scaffold(
@@ -111,13 +99,13 @@ class _HomePageState extends State<HomePage> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: TextField(
-              controller: _searchController,
+              controller: _controladorBusca,
               decoration: InputDecoration(
                 hintText: 'Pesquisar serviços...',
                 prefixIcon: const Icon(Icons.search, color: Colors.grey),
                 suffixIcon: PopupMenuButton<String>(
-                  onSelected: _handleMenuSelection,
-                  itemBuilder: (BuildContext context) => profileMenuItems,
+                  onSelected: (res) => _aoSelecionarMenu(res, context),
+                  itemBuilder: (context) => itensMenu,
                   child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.grey)),
                 ),
                 filled: true,
@@ -141,19 +129,45 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           children: [
             const SizedBox(height: 16),
-            FilterButtons(
-              selectedFilter: _selectedFilter,
-              onFilterSelected: _onFilterSelected,
+            BotoesFiltro(
+              filtroSelecionado: _filtroSelecionado,
+              aoSelecionar: (filtro) => setState(() => _filtroSelecionado = filtro),
             ),
             const SizedBox(height: 8),
+            
+
             Expanded(
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: _displayedServices.length,
-                itemBuilder: (context, index) {
-                  final service = _displayedServices[index];
-                  return ServiceCard(
-                    service: service,
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('servicos').snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const Center(
+                      child: Text('Nenhum serviço cadastrado ainda.', style: TextStyle(color: Colors.grey)),
+                    );
+                  }
+
+                  // Converter dados
+                  final todosServicos = snapshot.data!.docs.map((doc) {
+                    return Servico.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+                  }).toList();
+
+                  // Aplicar Filtros
+                  final servicosFiltrados = todosServicos.where((servico) {
+                    final categoriaOk = _filtroSelecionado == 'Todos' || servico.categoria == _filtroSelecionado;
+                    final buscaOk = servico.nome.toLowerCase().contains(_textoBusca);
+                    return categoriaOk && buscaOk;
+                  }).toList();
+
+                  return ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: servicosFiltrados.length,
+                    itemBuilder: (context, index) {
+                      return CardServico(servico: servicosFiltrados[index]);
+                    },
                   );
                 },
               ),
@@ -165,35 +179,36 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class FilterButtons extends StatelessWidget {
-  final String selectedFilter;
-  final Function(String) onFilterSelected;
+class BotoesFiltro extends StatelessWidget {
+  final String filtroSelecionado;
+  final Function(String) aoSelecionar;
 
-  const FilterButtons({super.key, required this.selectedFilter, required this.onFilterSelected});
+  const BotoesFiltro({super.key, required this.filtroSelecionado, required this.aoSelecionar});
 
   @override
   Widget build(BuildContext context) {
-    final List<String> filters = ['Todos', 'Cortes', 'Barba', 'Combos', 'Especial'];
+    final List<String> filtros = ['Todos', 'Cortes', 'Barba', 'Combos', 'Especial'];
     return SizedBox(
       height: 35,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
-        itemCount: filters.length,
+        itemCount: filtros.length,
         itemBuilder: (context, index) {
-          final filter = filters[index];
+          final filtro = filtros[index];
           return Padding(
-            padding: EdgeInsets.only(left: index == 0 ? 16 : 8, right: index == filters.length - 1 ? 16 : 0),
+            // Correção: removido o <caret>
+            padding: EdgeInsets.only(left: index == 0 ? 16 : 8, right: index == filtros.length - 1 ? 16 : 0),
             child: ChoiceChip(
-              label: Text(filter),
-              selected: selectedFilter == filter,
-              onSelected: (bool selected) {
-                if (selected) {
-                  onFilterSelected(filter);
+              label: Text(filtro),
+              selected: filtroSelecionado == filtro,
+              onSelected: (bool selecionado) {
+                if (selecionado) {
+                  aoSelecionar(filtro);
                 }
               },
               backgroundColor: Colors.white.withOpacity(0.7),
               selectedColor: Colors.white,
-              labelStyle: TextStyle(color: selectedFilter == filter ? Colors.black : Colors.black54),
+              labelStyle: TextStyle(color: filtroSelecionado == filtro ? Colors.black : Colors.black54),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               side: BorderSide.none,
             ),
@@ -204,10 +219,10 @@ class FilterButtons extends StatelessWidget {
   }
 }
 
-class ServiceCard extends StatelessWidget {
-  final Service service;
+class CardServico extends StatelessWidget {
+  final Servico servico;
 
-  const ServiceCard({super.key, required this.service});
+  const CardServico({super.key, required this.servico});
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +236,7 @@ class ServiceCard extends StatelessWidget {
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16.0)),
             child: Image.network(
-              service.imageUrl,
+              servico.urlImagem,
               height: 150,
               width: double.infinity,
               fit: BoxFit.cover,
@@ -245,9 +260,9 @@ class ServiceCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(service.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+                      Text(servico.nome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
                       const SizedBox(height: 4),
-                      Text(service.duration, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                      Text(servico.duracao, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -257,7 +272,7 @@ class ServiceCard extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => AppointmentPage(service: service),
+                        builder: (context) => AppointmentPage(servico: servico),
                       ),
                     );
                   },
@@ -269,7 +284,7 @@ class ServiceCard extends StatelessWidget {
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   ),
-                  child: Text(service.price),
+                  child: Text(servico.preco),
                 )
               ],
             ),

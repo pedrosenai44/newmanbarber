@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:newmanbarber/auth_gate.dart'; // Import the new AuthGate
+import 'package:newmanbarber/telas/tela_login.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
         fontFamily: 'sans-serif',
       ),
       debugShowCheckedModeBanner: false,
-      home: const AuthGate(), // Use AuthGate as the starting point
+      home: const LoginPage(), 
     );
   }
 }

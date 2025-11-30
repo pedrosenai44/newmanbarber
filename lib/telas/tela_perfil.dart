@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
-import 'package:newmanbarber/telas/login_page.dart';
-import 'package:newmanbarber/telas/admin/manage_barbers_page.dart'; // Importar a página de admin
+import 'package:cloud_firestore/cloud_firestore.dart'; // Firestore
+import 'package:newmanbarber/telas/admin/barbeiros.dart';
+import 'package:newmanbarber/telas/tela_login.dart';
+import 'package:newmanbarber/telas/tela_cadastro.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
-  // Função para deslogar
-  Future<void> _logout(BuildContext context) async {
+  // Sair
+  Future<void> _sair(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     if (context.mounted) {
       Navigator.of(context).pushAndRemoveUntil(
@@ -18,10 +19,10 @@ class ProfilePage extends StatelessWidget {
     }
   }
 
-  // Função para cancelar agendamento
-  Future<void> _cancelAppointment(String appointmentId, BuildContext context) async {
+  // Cancelar
+  Future<void> _cancelarAgendamento(String idAgendamento, BuildContext context) async {
     try {
-      await FirebaseFirestore.instance.collection('appointments').doc(appointmentId).update({
+      await FirebaseFirestore.instance.collection('appointments').doc(idAgendamento).update({
         'status': 'Cancelado',
       });
       if (context.mounted) {
@@ -40,36 +41,37 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final User? user = FirebaseAuth.instance.currentUser;
+    final User? usuario = FirebaseAuth.instance.currentUser;
 
-    if (user == null) {
+    if (usuario == null) {
       return const Center(child: Text("Usuário não logado"));
     }
 
-    // StreamBuilder to listen for real-time updates from Firestore (USER PROFILE)
+    // Stream
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').doc(usuario.uid).snapshots(),
       builder: (context, snapshot) {
-        // Loading state
+        // Carregando
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Error state
+        // Erro
         if (snapshot.hasError) {
           return const Scaffold(body: Center(child: Text("Erro ao carregar perfil")));
         }
 
-        // Extract data from the document
-        final userData = snapshot.data?.data() as Map<String, dynamic>?;
+        // Dados
+        final dadosUsuario = snapshot.data?.data() as Map<String, dynamic>?;
 
-        // Fallback values if data is missing
-        final String userName = userData?['name'] ?? user.displayName ?? 'Usuário';
-        final String userEmail = userData?['email'] ?? user.email ?? 'Sem email';
-        final String userPhone = userData?['phone'] ?? 'Telefone não cadastrado';
-        // Verificar role diretamente do banco
-        final bool isAdmin = userData?['role'] == 'admin';
-        final String userRoleDisplay = isAdmin ? 'Administrador' : 'Cliente';
+        // Valores
+        final String nome = dadosUsuario?['name'] ?? usuario.displayName ?? 'Usuário';
+        final String email = dadosUsuario?['email'] ?? usuario.email ?? 'Sem email';
+        final String telefone = dadosUsuario?['phone'] ?? 'Telefone não cadastrado';
+        
+        // Papel
+        final bool ehAdmin = dadosUsuario?['role'] == 'admin';
+        final String papelDisplay = ehAdmin ? 'Administrador' : 'Cliente';
 
         return Scaffold(
           appBar: AppBar(
@@ -92,7 +94,7 @@ class ProfilePage extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               children: [
                 const SizedBox(height: 16),
-                // Card de Informações do Usuário
+                // Info
                 Card(
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 4,
@@ -107,34 +109,34 @@ class ProfilePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          userName,
+                          nome,
                           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                         ),
-                        Text(userRoleDisplay, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                        Text(papelDisplay, style: const TextStyle(fontSize: 16, color: Colors.grey)),
                         const Divider(height: 32),
                         ListTile(
                           leading: const Icon(Icons.email_outlined),
-                          title: Text(userEmail),
+                          title: Text(email),
                         ),
                         ListTile(
                           leading: const Icon(Icons.phone_outlined),
-                          title: Text(userPhone),
+                          title: Text(telefone),
                         ),
                         
-                        // BOTÃO DE ADMIN (Só aparece se for admin)
-                        if (isAdmin) ...[
+                        // Botão Admin
+                        if (ehAdmin) ...[
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
                             onPressed: () {
                               Navigator.push(
                                 context,
-                                MaterialPageRoute(builder: (context) => const ManageBarbersPage()),
+                                MaterialPageRoute(builder: (context) => const GerenciarBarbeirosPage()),
                               );
                             },
                             icon: const Icon(Icons.admin_panel_settings, color: Colors.white),
                             label: const Text('Gerenciar Barbeiros', style: TextStyle(color: Colors.white)),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange, // Cor diferente para destacar
+                              backgroundColor: Colors.orange,
                               minimumSize: const Size(double.infinity, 50),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -143,7 +145,7 @@ class ProfilePage extends StatelessWidget {
 
                         const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () => _logout(context),
+                          onPressed: () => _sair(context),
                           icon: const Icon(Icons.exit_to_app, color: Colors.white),
                           label: const Text('Sair da Conta', style: TextStyle(color: Colors.white)),
                           style: ElevatedButton.styleFrom(
@@ -158,33 +160,33 @@ class ProfilePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // --- SEÇÃO DE AGENDAMENTOS (AGORA CONECTADA AO FIREBASE) ---
+                // Histórico
                 const Text('Meus Agendamentos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                 const SizedBox(height: 8),
                 
-                // StreamBuilder para ler agendamentos
+                // Lista
                 StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('appointments')
-                      .where('userId', isEqualTo: user.uid) // Filtra pelo usuário atual
-                      .orderBy('createdAt', descending: true) // Ordena do mais novo para o mais antigo
+                      .where('userId', isEqualTo: usuario.uid)
+                      .orderBy('createdAt', descending: true)
                       .snapshots(),
-                  builder: (context, appointmentSnapshot) {
-                    if (appointmentSnapshot.connectionState == ConnectionState.waiting) {
+                  builder: (context, snapAgendamentos) {
+                    if (snapAgendamentos.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    if (!appointmentSnapshot.hasData || appointmentSnapshot.data!.docs.isEmpty) {
-                      return _buildEmptyState();
+                    if (!snapAgendamentos.hasData || snapAgendamentos.data!.docs.isEmpty) {
+                      return _construirEstadoVazio();
                     }
 
-                    final appointments = appointmentSnapshot.data!.docs;
+                    final agendamentos = snapAgendamentos.data!.docs;
 
                     return Column(
-                      children: appointments.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final appointmentId = doc.id;
-                        return _buildAppointmentCard(data, appointmentId, context);
+                      children: agendamentos.map((doc) {
+                        final dados = doc.data() as Map<String, dynamic>;
+                        final idAgendamento = doc.id;
+                        return _construirCardAgendamento(dados, idAgendamento, context);
                       }).toList(),
                     );
                   },
@@ -197,24 +199,22 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  // Widget para exibir cada agendamento
-  Widget _buildAppointmentCard(Map<String, dynamic> data, String appointmentId, BuildContext context) {
-    final String status = data['status'] ?? 'Confirmado';
-    final bool isCancelled = status == 'Cancelado';
+  // Card
+  Widget _construirCardAgendamento(Map<String, dynamic> dados, String idAgendamento, BuildContext context) {
+    final String status = dados['status'] ?? 'Confirmado';
+    final bool cancelado = status == 'Cancelado';
     
-    // Formatar data (supondo que salvamos como string ISO ou timestamp)
-    String formattedDate = data['date']?.toString().split('T')[0] ?? 'Data inválida'; // Simplificação
+    String dataFormatada = dados['date']?.toString().split('T')[0] ?? 'Data inválida';
     
-    // Tenta formatar melhor se possível, aqui pegamos a parte da data da string ISO
-    if (data['date'] is String && data['date'].contains('T')) {
-       final DateTime dateTime = DateTime.parse(data['date']);
-       formattedDate = "${dateTime.day}/${dateTime.month}/${dateTime.year}";
+    if (dados['date'] is String && dados['date'].contains('T')) {
+       final DateTime dataObj = DateTime.parse(dados['date']);
+       dataFormatada = "${dataObj.day}/${dataObj.month}/${dataObj.year}";
     }
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 4,
-      margin: const EdgeInsets.only(bottom: 16), // Espaço entre cards
+      margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -222,18 +222,18 @@ class ProfilePage extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(data['serviceName'] ?? 'Serviço', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                Text(dados['serviceName'] ?? 'Serviço', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isCancelled ? Colors.red.shade100 : Colors.green.shade100,
+                    color: cancelado ? Colors.red.shade100 : Colors.green.shade100,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     status, 
                     style: TextStyle(
-                      color: isCancelled ? Colors.red : Colors.green, 
+                      color: cancelado ? Colors.red : Colors.green, 
                       fontWeight: FontWeight.bold
                     )
                   ),
@@ -243,19 +243,20 @@ class ProfilePage extends StatelessWidget {
             const Divider(height: 24),
             ListTile(
               leading: const Icon(Icons.person_outline), 
-              title: Text(data['barberName'] ?? 'Barbeiro'), 
+              title: Text(dados['barberName'] ?? 'Barbeiro'), 
               dense: true, 
               visualDensity: const VisualDensity(vertical: -4)
             ),
             ListTile(
               leading: const Icon(Icons.calendar_today_outlined), 
-              title: Text(formattedDate), 
+              title: Text(dataFormatada), 
               dense: true, 
               visualDensity: const VisualDensity(vertical: -4)
             ),
+            // CORRIGIDO AQUI: access_time_outlined
             ListTile(
               leading: const Icon(Icons.access_time_outlined), 
-              title: Text(data['time'] ?? 'Horário'), 
+              title: Text(dados['time'] ?? 'Horário'), 
               dense: true, 
               visualDensity: const VisualDensity(vertical: -4)
             ),
@@ -263,12 +264,11 @@ class ProfilePage extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(data['servicePrice'] ?? 'R\$ --', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(dados['servicePrice'] ?? 'R\$ --', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 
-                // Botão Cancelar (só aparece se não estiver cancelado)
-                if (!isCancelled)
+                if (!cancelado)
                   OutlinedButton(
-                    onPressed: () => _cancelAppointment(appointmentId, context),
+                    onPressed: () => _cancelarAgendamento(idAgendamento, context),
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent),
                     child: const Text('Cancelar'),
                   ),
@@ -280,7 +280,8 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  // Vazio
+  Widget _construirEstadoVazio() {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       elevation: 4,

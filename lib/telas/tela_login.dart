@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:newmanbarber/telas/home_page.dart';
-import 'package:newmanbarber/telas/signup_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import necessário para verificar role
+import 'package:newmanbarber/telas/tela_principal.dart';
+import 'package:flutter/material.dart';
+import 'package:newmanbarber/telas/admin/tela_principal_admin.dart';
+import 'package:newmanbarber/telas/tela_cadastro.dart';
+
+
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -11,49 +16,67 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  // Controllers to capture user input
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  final _senhaController = TextEditingController();
+  bool _carregando = false;
 
-  bool _isLoading = false;
-
-  Future<void> _signIn() async {
+  Future<void> _entrar() async {
     setState(() {
-      _isLoading = true;
+      _carregando = true;
     });
 
     try {
-      // Attempt to sign in with Firebase
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      // 1. Tentar login com email e senha
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        password: _senhaController.text.trim(),
       );
 
-      // If successful, navigate to HomePage
-      if (mounted) {
+      if (!mounted) return;
+
+      // 2. Buscar o documento do usuário no Firestore para ver se é admin
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user!.uid)
+          .get();
+
+      if (!mounted) return;
+
+      // 3. Verificar a role e redirecionar
+      final userData = userDoc.data();
+      final bool isAdmin = userData != null && userData['role'] == 'admin';
+
+      if (isAdmin) {
+        // Vai para a área do ADMIN
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const AdminHomePage()),
+        );
+      } else {
+        // Vai para a área do CLIENTE (Home normal)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const HomePage()),
         );
       }
+
     } on FirebaseAuthException catch (e) {
-      // Handle login errors
-      String message;
+      String mensagem;
       if (e.code == 'user-not-found') {
-        message = 'Usuário não encontrado.';
+        mensagem = 'Usuário não encontrado.';
       } else if (e.code == 'wrong-password') {
-        message = 'Senha incorreta.';
+        mensagem = 'Senha incorreta.';
       } else if (e.code == 'invalid-email') {
-        message = 'Email inválido.';
+        mensagem = 'Email inválido.';
       } else if (e.code == 'invalid-credential') {
-        message = 'Credenciais inválidas. Verifique seu email e senha.';
+        mensagem = 'Credenciais inválidas.';
       } else {
-        message = 'Erro ao fazer login. Tente novamente.';
+        mensagem = 'Erro ao fazer login. Tente novamente.';
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
         );
       }
     } catch (e) {
@@ -64,9 +87,11 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _carregando = false;
+      });
+    }
   }
 
   @override
@@ -78,10 +103,7 @@ class _LoginPageState extends State<LoginPage> {
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Colors.blue.shade300,
-              Colors.white,
-            ],
+            colors: [Colors.blue.shade300, Colors.white],
             stops: const [0.4, 1.0],
           ),
         ),
@@ -91,7 +113,6 @@ class _LoginPageState extends State<LoginPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // Placeholder for Logo
                 const CircleAvatar(
                   radius: 40,
                   backgroundColor: Colors.black,
@@ -101,11 +122,7 @@ class _LoginPageState extends State<LoginPage> {
                 const Text(
                   'NewManBarber',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'serif',
-                  ),
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'serif'),
                 ),
                 const SizedBox(height: 48),
                 TextField(
@@ -115,52 +132,38 @@ class _LoginPageState extends State<LoginPage> {
                     fillColor: Colors.white,
                     hintText: 'seu@email.com',
                     labelText: 'Email',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   ),
                   keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 16),
                 TextField(
-                  controller: _passwordController,
+                  controller: _senhaController,
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
                     hintText: '*******',
                     labelText: 'Senha',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                   ),
                   obscureText: true,
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
-                  onPressed: _isLoading ? null : _signIn,
+                  onPressed: _carregando ? null : _entrar,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue.shade100.withOpacity(0.8),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                   ),
-                  child: _isLoading
+                  child: _carregando
                       ? const CircularProgressIndicator()
-                      : const Text(
-                          'Login',
-                          style: TextStyle(fontSize: 18, color: Colors.black87),
-                        ),
+                      : const Text('Login', style: TextStyle(fontSize: 18, color: Colors.black87)),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () {},
-                  child: const Text(
-                    'Esqueceu a senha?',
-                    style: TextStyle(color: Colors.black54),
-                  ),
+                  child: const Text('Esqueceu a senha?', style: TextStyle(color: Colors.black54)),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -173,10 +176,7 @@ class _LoginPageState extends State<LoginPage> {
                           MaterialPageRoute(builder: (context) => const SignUpPage()),
                         );
                       },
-                      child: const Text(
-                        'Cadastre-se',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-                      ),
+                      child: const Text('Cadastre-se', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
                     ),
                   ],
                 ),
