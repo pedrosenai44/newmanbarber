@@ -10,80 +10,105 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> {
-  // Controladores
   final _nomeController = TextEditingController();
   final _emailController = TextEditingController();
   final _senhaController = TextEditingController();
-
   bool _carregando = false;
 
+  // LÓGICA DE CADASTRO ATUALIZADA
   Future<void> _cadastrar() async {
-    setState(() {
-      _carregando = true;
-    });
+    if (_nomeController.text.isEmpty || _emailController.text.isEmpty || _senhaController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos.')));
+      return;
+    }
+
+    setState(() => _carregando = true);
 
     try {
-      // Criar Auth
+      String role = 'client'; // Padrão é cliente
+
+      // 1. VERIFICAR SE O EMAIL ESTÁ NA LISTA DE BARBEIROS PRÉ-CADASTRADOS
+      final email = _emailController.text.trim().toLowerCase();
+      final queryBarbeiro = await FirebaseFirestore.instance
+          .collection('barbeiros')
+          .where('email', isEqualTo: email)
+          .limit(1)
+          .get();
+
+      if (queryBarbeiro.docs.isNotEmpty) {
+        // Se encontrou, este usuário é um barbeiro!
+        role = 'barber';
+      }
+
+      // 2. CRIAR A CONTA DE AUTENTICAÇÃO
       final credencial = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: _emailController.text.trim(),
+        email: email,
         password: _senhaController.text.trim(),
       );
 
-      // Atualizar nome
+      // 3. ENVIAR EMAIL DE VERIFICAÇÃO
+      if (credencial.user != null && !credencial.user!.emailVerified) {
+        await credencial.user!.sendEmailVerification();
+      }
+
+      // 4. ATUALIZAR NOME NO AUTH
       await credencial.user?.updateDisplayName(_nomeController.text.trim());
 
-      // Salvar Firestore
+      // 5. SALVAR DADOS NO FIRESTORE COM A ROLE CORRETA
       await FirebaseFirestore.instance.collection('users').doc(credencial.user!.uid).set({
         'name': _nomeController.text.trim(),
-        'email': _emailController.text.trim(),
+        'email': email,
         'createdAt': FieldValue.serverTimestamp(),
-        'role': 'client',
+        'role': role, 
       });
 
-      // Sucesso
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cadastro realizado com sucesso!')),
-        );
-        Navigator.of(context).pop();
+        await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+                  title: const Text('Cadastro Realizado!'),
+                  content: Text(
+                    role == 'barber'
+                      ? 'Bem-vindo, Barbeiro! Enviamos um link de verificação para o seu email. Confirme para poder fazer o login.'
+                      : 'Enviamos um link de verificação para o seu email. Por favor, confirme para poder fazer o login.'
+                  ),
+                  actions: [
+                    TextButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('Ok')),
+                  ],
+                ));
       }
     } on FirebaseAuthException catch (e) {
-      // Erros Firebase
-      String mensagem;
+      String mensagem = 'Ocorreu um erro no cadastro.';
       if (e.code == 'weak-password') {
-        mensagem = 'A senha é muito fraca.';
+        mensagem = 'A senha é muito fraca (mínimo 6 caracteres).';
       } else if (e.code == 'email-already-in-use') {
-        mensagem = 'Este email já está em uso.';
-      } else {
-        mensagem = 'Erro: ${e.message} (Código: ${e.code})';
+        mensagem = 'Este email já está em uso por outra conta.';
+      } else if (e.code == 'invalid-email') {
+        mensagem = 'O email digitado não é válido.';
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagem), backgroundColor: Colors.redAccent));
       }
     } catch (e) {
-      // Outros erros
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro inesperado: $e'), backgroundColor: Colors.redAccent),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro inesperado: $e'), backgroundColor: Colors.redAccent));
       }
     }
 
-    setState(() {
-      _carregando = false;
-    });
+    if (mounted) {
+      setState(() => _carregando = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: const BackButton(color: Colors.black87),
-      ),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, leading: const BackButton(color: Colors.black87)),
       body: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24.0),
         decoration: BoxDecoration(
@@ -100,72 +125,18 @@ class _SignUpPageState extends State<SignUpPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                const Text(
-                  'Criar Conta',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    fontFamily: 'serif',
-                  ),
-                ),
+                const Text('Criar Conta', textAlign: TextAlign.center, style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, fontFamily: 'serif')),
                 const SizedBox(height: 48),
-                TextField(
-                  controller: _nomeController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    labelText: 'Nome Completo',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
+                TextField(controller: _nomeController, decoration: InputDecoration(filled: true, fillColor: Colors.white, labelText: 'Nome Completo', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none))),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    labelText: 'Email',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                ),
+                TextField(controller: _emailController, decoration: InputDecoration(filled: true, fillColor: Colors.white, labelText: 'Email Válido', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)), keyboardType: TextInputType.emailAddress),
                 const SizedBox(height: 16),
-                TextField(
-                  controller: _senhaController,
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    labelText: 'Senha',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  obscureText: true,
-                ),
+                TextField(controller: _senhaController, decoration: InputDecoration(filled: true, fillColor: Colors.white, labelText: 'Senha (mínimo 6 caracteres)', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)), obscureText: true),
                 const SizedBox(height: 24),
                 ElevatedButton(
                   onPressed: _carregando ? null : _cadastrar,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade100.withOpacity(0.8),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  child: _carregando
-                      ? const CircularProgressIndicator()
-                      : const Text(
-                          'Cadastrar',
-                          style: TextStyle(fontSize: 18, color: Colors.black87),
-                        ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade100.withOpacity(0.8), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                  child: _carregando ? const CircularProgressIndicator() : const Text('Cadastrar', style: TextStyle(fontSize: 18, color: Colors.black87)),
                 ),
               ],
             ),

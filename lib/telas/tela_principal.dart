@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:newmanbarber/telas/tela_agendamento.dart';
 import 'package:newmanbarber/telas/tela_login.dart';
 import 'package:newmanbarber/telas/tela_perfil.dart';
+import 'package:newmanbarber/utils/imagem_universal.dart';
+import 'package:newmanbarber/utils/verificar_email_lembrete.dart'; // Importa o lembrete
 
-// Modelo
 class Servico {
-  final String id; // ID do documento no banco
+  final String id;
   final String nome;
   final String duracao;
   final String preco;
@@ -22,14 +23,12 @@ class Servico {
     required this.categoria,
   });
 
-  // Converte
   factory Servico.fromMap(Map<String, dynamic> map, String documentId) {
     return Servico(
       id: documentId,
       nome: map['nome'] ?? 'Sem Nome',
       duracao: map['duracao'] ?? '30 min',
       preco: map['preco']?.toString() ?? 'R\$ 0,00',
-      // Imagem
       urlImagem: (map['urlImagem'] != null && map['urlImagem'] != '')
           ? map['urlImagem']
           : 'https://cdn-icons-png.flaticon.com/512/2098/2098243.png',
@@ -88,91 +87,109 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: Colors.blue.shade300,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('NewManBarber', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'serif', color: Colors.white, fontSize: 24)),
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(50.0),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: TextField(
-              controller: _controladorBusca,
-              decoration: InputDecoration(
-                hintText: 'Pesquisar serviços...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: PopupMenuButton<String>(
-                  onSelected: (res) => _aoSelecionarMenu(res, context),
-                  itemBuilder: (context) => itensMenu,
-                  child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.grey)),
+      body: Column(
+        children: [
+          // WIDGET DE VERIFICAÇÃO DE EMAIL
+          const VerificarEmailLembrete(),
+          
+          // AppBar customizada como parte do corpo
+          _buildCustomAppBar(context, itensMenu),
+
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.blue.shade300, Colors.white],
+                  stops: const [0.0, 0.7],
                 ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30.0), borderSide: BorderSide.none),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
               ),
-            ),
-          ),
-        ),
-      ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.blue.shade300, Colors.white],
-            stops: const [0.0, 0.7],
-          ),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            BotoesFiltro(
-              filtroSelecionado: _filtroSelecionado,
-              aoSelecionar: (filtro) => setState(() => _filtroSelecionado = filtro),
-            ),
-            const SizedBox(height: 8),
-            
-
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('servicos').snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+              child: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  BotoesFiltro(
+                    filtroSelecionado: _filtroSelecionado,
+                    aoSelecionar: (filtro) => setState(() => _filtroSelecionado = filtro),
+                  ),
+                  const SizedBox(height: 8),
                   
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return const Center(
-                      child: Text('Nenhum serviço cadastrado ainda.', style: TextStyle(color: Colors.grey)),
-                    );
-                  }
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('servicos').snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return const Center(
+                            child: Text('Nenhum serviço cadastrado ainda.', style: TextStyle(color: Colors.grey)),
+                          );
+                        }
 
-                  // Converter dados
-                  final todosServicos = snapshot.data!.docs.map((doc) {
-                    return Servico.fromMap(doc.data() as Map<String, dynamic>, doc.id);
-                  }).toList();
+                        final todosServicos = snapshot.data!.docs.map((doc) {
+                          return Servico.fromMap(doc.data() as Map<String, dynamic>, doc.id);
+                        }).toList();
 
-                  // Aplicar Filtros
-                  final servicosFiltrados = todosServicos.where((servico) {
-                    final categoriaOk = _filtroSelecionado == 'Todos' || servico.categoria == _filtroSelecionado;
-                    final buscaOk = servico.nome.toLowerCase().contains(_textoBusca);
-                    return categoriaOk && buscaOk;
-                  }).toList();
+                        final servicosFiltrados = todosServicos.where((servico) {
+                          final categoriaOk = _filtroSelecionado == 'Todos' || servico.categoria == _filtroSelecionado;
+                          final buscaOk = servico.nome.toLowerCase().contains(_textoBusca);
+                          return categoriaOk && buscaOk;
+                        }).toList();
 
-                  return ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: servicosFiltrados.length,
-                    itemBuilder: (context, index) {
-                      return CardServico(servico: servicosFiltrados[index]);
-                    },
-                  );
-                },
+                        return ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: servicosFiltrados.length,
+                          itemBuilder: (context, index) {
+                            return CardServico(servico: servicosFiltrados[index]);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // AppBar extraída para um método
+  Widget _buildCustomAppBar(BuildContext context, List<PopupMenuEntry<String>> itensMenu) {
+    return Material(
+      color: Colors.blue.shade300,
+      elevation: 2,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Column(
+            children: [
+              const Text('NewManBarber', style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'serif', color: Colors.white, fontSize: 24)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+                child: TextField(
+                  controller: _controladorBusca,
+                  decoration: InputDecoration(
+                    hintText: 'Pesquisar serviços...',
+                    prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                    suffixIcon: PopupMenuButton<String>(
+                      onSelected: (res) => _aoSelecionarMenu(res, context),
+                      itemBuilder: (context) => itensMenu,
+                      child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.grey)),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(30.0), borderSide: BorderSide.none),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -196,7 +213,6 @@ class BotoesFiltro extends StatelessWidget {
         itemBuilder: (context, index) {
           final filtro = filtros[index];
           return Padding(
-            // Correção: removido o <caret>
             padding: EdgeInsets.only(left: index == 0 ? 16 : 8, right: index == filtros.length - 1 ? 16 : 0),
             child: ChoiceChip(
               label: Text(filtro),
@@ -233,21 +249,14 @@ class CardServico extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16.0)),
-            child: Image.network(
-              servico.urlImagem,
-              height: 150,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                    height: 150,
-                    color: Colors.grey.shade200,
-                    child: const Center(child: Icon(Icons.image_not_supported, color: Colors.grey, size: 50)));
-              },
-            ),
+          ImagemUniversal(
+            urlOuBase64: servico.urlImagem,
+            width: double.infinity,
+            height: 150,
+            fit: BoxFit.cover,
+            radius: 16, 
           ),
+          
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(

@@ -1,8 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:newmanbarber/utils/imagem_universal.dart';
 
 class GerenciarServicosPage extends StatefulWidget {
   const GerenciarServicosPage({super.key});
@@ -12,29 +13,27 @@ class GerenciarServicosPage extends StatefulWidget {
 }
 
 class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
-  // Controladores
   final _nomeController = TextEditingController();
   final _precoController = TextEditingController();
   final _duracaoController = TextEditingController(); 
   
-  // Controle de Imagem
   File? _imagemSelecionada;
-  String? _urlImagemExterna; // Para quando o usuário colar um link
+  String? _stringImagemFinal; 
   bool _enviando = false;
 
-  // Categoria padrão
   String _categoriaSelecionada = 'Cortes';
   final List<String> _categorias = ['Cortes', 'Barba', 'Combos', 'Especial'];
 
-  // Escolher Imagem da Galeria/Câmera
   Future<void> _escolherImagem(ImageSource origem, StateSetter setStateDialog) async {
     final ImagePicker picker = ImagePicker();
     try {
-      final XFile? imagem = await picker.pickImage(source: origem, imageQuality: 50);
+      final XFile? imagem = await picker.pickImage(source: origem, imageQuality: 25, maxWidth: 400);
       if (imagem != null) {
+        final bytes = await File(imagem.path).readAsBytes();
+        final base64String = base64Encode(bytes);
         setStateDialog(() {
           _imagemSelecionada = File(imagem.path);
-          _urlImagemExterna = null; // Limpa o link se escolher arquivo
+          _stringImagemFinal = base64String;
         });
       }
     } catch (e) {
@@ -42,7 +41,6 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
     }
   }
 
-  // Adicionar Link Manualmente
   Future<void> _adicionarLink(StateSetter setStateDialog) async {
     final linkController = TextEditingController();
     await showDialog(
@@ -51,23 +49,16 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
         title: const Text('Adicionar Link da Imagem'),
         content: TextField(
           controller: linkController,
-          decoration: const InputDecoration(
-            hintText: 'https://exemplo.com/foto.jpg',
-            labelText: 'URL da Imagem',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: 'https://...', labelText: 'URL'),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           ElevatedButton(
             onPressed: () {
               if (linkController.text.isNotEmpty) {
                 setStateDialog(() {
-                  _urlImagemExterna = linkController.text.trim();
-                  _imagemSelecionada = null; // Limpa o arquivo se escolher link
+                  _stringImagemFinal = linkController.text.trim();
+                  _imagemSelecionada = null;
                 });
               }
               Navigator.pop(ctx);
@@ -79,53 +70,38 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
     );
   }
 
-  // Obter URL final (Upload ou Link)
-  Future<String> _obterUrlImagem() async {
-    // 1. Se tiver arquivo, faz upload
-    if (_imagemSelecionada != null) {
-       try {
-        String nomeArquivo = DateTime.now().millisecondsSinceEpoch.toString();
-        Reference ref = FirebaseStorage.instance.ref().child('servicos/$nomeArquivo.jpg');
-        UploadTask task = ref.putFile(_imagemSelecionada!);
-        TaskSnapshot snapshot = await task;
-        return await snapshot.ref.getDownloadURL();
-      } catch (e) {
-        print("Erro upload: $e");
-        return ''; // Falha no upload
-      }
-    } 
-    // 2. Se tiver link externo, usa ele
-    else if (_urlImagemExterna != null && _urlImagemExterna!.isNotEmpty) {
-      return _urlImagemExterna!;
-    }
-    
-    // 3. Se não tiver nada, retorna padrão
-    return 'https://cdn-icons-png.flaticon.com/512/2098/2098243.png';
-  }
-
-  Future<void> _adicionarServico(StateSetter setStateDialog) async {
+  // Função unificada SALVAR
+  Future<void> _salvarServico(StateSetter setStateDialog, {String? docId}) async {
     if (_nomeController.text.isEmpty || _precoController.text.isEmpty) return;
 
-    setStateDialog(() {
-      _enviando = true;
-    });
+    setStateDialog(() => _enviando = true);
 
-    String urlFinal = await _obterUrlImagem();
-    if (urlFinal.isEmpty) urlFinal = 'https://cdn-icons-png.flaticon.com/512/2098/2098243.png';
+    String precoFormatado = _precoController.text.startsWith('R\$') 
+        ? _precoController.text 
+        : 'R\$ ${_precoController.text}';
 
-    await FirebaseFirestore.instance.collection('servicos').add({
+    Map<String, dynamic> dados = {
       'nome': _nomeController.text,
-      'preco': 'R\$ ${_precoController.text}',
+      'preco': precoFormatado,
       'duracao': _duracaoController.text.isEmpty ? '30 min' : _duracaoController.text,
-      'urlImagem': urlFinal,
       'categoria': _categoriaSelecionada,
-    });
+    };
+    
+    if (_stringImagemFinal != null) {
+      dados['urlImagem'] = _stringImagemFinal!;
+    } else if (docId == null) {
+      // Se for novo e não tiver imagem, usa padrão
+      dados['urlImagem'] = 'https://cdn-icons-png.flaticon.com/512/2098/2098243.png';
+    }
+
+    if (docId == null) {
+      await FirebaseFirestore.instance.collection('servicos').add(dados);
+    } else {
+      await FirebaseFirestore.instance.collection('servicos').doc(docId).update(dados);
+    }
 
     _limparCampos();
-    setStateDialog(() {
-      _enviando = false;
-    });
-
+    setStateDialog(() => _enviando = false);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -138,30 +114,33 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
     _precoController.clear();
     _duracaoController.clear();
     _imagemSelecionada = null;
-    _urlImagemExterna = null;
-    setState(() {
-      _categoriaSelecionada = 'Cortes';
-    });
+    _stringImagemFinal = null;
+    setState(() => _categoriaSelecionada = 'Cortes');
   }
 
-  void _mostrarDialogoAdicionar() {
+  // Agora aceita parâmetros para edição
+  void _mostrarDialogo({String? docId, Map<String, dynamic>? dadosAtuais}) {
     _limparCampos(); 
+
+    if (docId != null && dadosAtuais != null) {
+      _nomeController.text = dadosAtuais['nome'];
+      // Remove R$ para edição
+      _precoController.text = dadosAtuais['preco'].toString().replaceAll('R\$ ', ''); 
+      _duracaoController.text = dadosAtuais['duracao'];
+      _stringImagemFinal = dadosAtuais['urlImagem'];
+      
+      // Garante que a categoria existe na lista, senão usa padrão
+      if (_categorias.contains(dadosAtuais['categoria'])) {
+        _categoriaSelecionada = dadosAtuais['categoria'];
+      }
+    }
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setStateDialog) {
-          
-          // Lógica para decidir qual imagem mostrar no preview
-          ImageProvider? imageProvider;
-          if (_imagemSelecionada != null) {
-            imageProvider = FileImage(_imagemSelecionada!);
-          } else if (_urlImagemExterna != null && _urlImagemExterna!.isNotEmpty) {
-            imageProvider = NetworkImage(_urlImagemExterna!);
-          }
-
           return AlertDialog(
-            title: const Text('Novo Serviço'),
+            title: Text(docId == null ? 'Novo Serviço' : 'Editar Serviço'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -170,27 +149,17 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
                     child: Stack(
                       alignment: Alignment.bottomRight,
                       children: [
-                        Container(
-                          height: 120,
+                        ImagemUniversal(
+                          urlOuBase64: _stringImagemFinal,
+                          arquivoLocal: _imagemSelecionada,
                           width: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(12),
-                            image: imageProvider != null
-                              ? DecorationImage(image: imageProvider, fit: BoxFit.cover)
-                              : null,
-                          ),
-                          child: imageProvider == null 
-                            ? const Icon(Icons.image, size: 50, color: Colors.grey) 
-                            : null,
+                          height: 120,
+                          radius: 12, 
                         ),
                         PopupMenuButton<String>(
                           icon: Container(
                             padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                            ),
+                            decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
                             child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
                           ),
                           onSelected: (opcao) {
@@ -198,71 +167,40 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
                             if (opcao == 'galeria') _escolherImagem(ImageSource.gallery, setStateDialog);
                             if (opcao == 'link') _adicionarLink(setStateDialog);
                           },
-                          itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                            const PopupMenuItem<String>(
-                              value: 'camera',
-                              child: ListTile(leading: Icon(Icons.camera_alt), title: Text('Tirar Foto'), contentPadding: EdgeInsets.zero),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'galeria',
-                              child: ListTile(leading: Icon(Icons.photo_library), title: Text('Galeria'), contentPadding: EdgeInsets.zero),
-                            ),
-                             const PopupMenuItem<String>(
-                              value: 'link',
-                              child: ListTile(leading: Icon(Icons.link), title: Text('Colar Link'), contentPadding: EdgeInsets.zero),
-                            ),
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(value: 'camera', child: ListTile(leading: Icon(Icons.camera_alt), title: Text('Tirar Foto'))),
+                            const PopupMenuItem(value: 'galeria', child: ListTile(leading: Icon(Icons.photo_library), title: Text('Galeria'))),
+                             const PopupMenuItem(value: 'link', child: ListTile(leading: Icon(Icons.link), title: Text('Colar Link'))),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text("Toque no ícone para alterar a imagem", style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 16),
-                  
-                  TextField(
-                    controller: _nomeController,
-                    decoration: const InputDecoration(labelText: 'Nome (ex: Corte Degradê)'),
-                  ),
-                  TextField(
-                    controller: _precoController,
-                    decoration: const InputDecoration(labelText: 'Preço (ex: 35,00)'),
-                    keyboardType: TextInputType.number,
-                  ),
-                  TextField(
-                    controller: _duracaoController,
-                    decoration: const InputDecoration(labelText: 'Duração (ex: 45 min)'),
-                  ),
+                  TextField(controller: _nomeController, decoration: const InputDecoration(labelText: 'Nome')),
+                  TextField(controller: _precoController, decoration: const InputDecoration(labelText: 'Preço'), keyboardType: TextInputType.number),
+                  TextField(controller: _duracaoController, decoration: const InputDecoration(labelText: 'Duração')),
                   const SizedBox(height: 15),
                   DropdownButtonFormField<String>(
                     value: _categoriaSelecionada,
                     decoration: const InputDecoration(labelText: 'Categoria'),
-                    items: _categorias.map((String cat) {
-                      return DropdownMenuItem(value: cat, child: Text(cat));
-                    }).toList(),
-                    onChanged: (val) {
-                      setStateDialog(() => _categoriaSelecionada = val!);
-                    },
+                    items: _categorias.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                    onChanged: (val) => setStateDialog(() => _categoriaSelecionada = val!),
                   ),
                   if (_enviando) ...[
                     const SizedBox(height: 20),
                     const CircularProgressIndicator(),
-                    const Text("Salvando serviço..."),
+                    const Text("Salvando..."),
                   ]
                 ],
               ),
             ),
             actions: [
-              if (!_enviando)
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-              if (!_enviando)
-                ElevatedButton(
-                  onPressed: () => _adicionarServico(setStateDialog),
-                  child: const Text('Salvar'),
-                ),
+              if (!_enviando) TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+              if (!_enviando) ElevatedButton(
+                onPressed: () => _salvarServico(setStateDialog, docId: docId), 
+                child: Text(docId == null ? 'Salvar' : 'Atualizar')
+              ),
             ],
           );
         },
@@ -275,7 +213,7 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Gerenciar Serviços')),
       floatingActionButton: FloatingActionButton(
-        onPressed: _mostrarDialogoAdicionar,
+        onPressed: () => _mostrarDialogo(),
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder(
@@ -290,15 +228,12 @@ class _GerenciarServicosPageState extends State<GerenciarServicosPage> {
               var dados = doc.data() as Map<String, dynamic>;
 
               return ListTile(
-                leading: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    dados['urlImagem'] ?? '',
-                    width: 50,
-                    height: 50,
-                    fit: BoxFit.cover,
-                    errorBuilder: (c, e, s) => const Icon(Icons.cut),
-                  ),
+                onTap: () => _mostrarDialogo(docId: doc.id, dadosAtuais: dados), // CLIQUE PARA EDITAR
+                leading: ImagemUniversal(
+                  urlOuBase64: dados['urlImagem'],
+                  width: 50,
+                  height: 50,
+                  radius: 8,
                 ),
                 title: Text(dados['nome']),
                 subtitle: Text("${dados['categoria']} - ${dados['preco']}"),

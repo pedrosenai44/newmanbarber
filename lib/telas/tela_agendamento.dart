@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:newmanbarber/telas/tela_principal.dart'; // Para usar a classe Servico
+import 'package:intl/intl.dart'; 
+import 'package:newmanbarber/telas/tela_principal.dart';
 import 'package:newmanbarber/telas/agendamento_sucesso_page.dart';
+import 'package:newmanbarber/utils/imagem_universal.dart';
 
 class AppointmentPage extends StatefulWidget {
   final Servico servico;
@@ -14,24 +16,18 @@ class AppointmentPage extends StatefulWidget {
 }
 
 class _AppointmentPageState extends State<AppointmentPage> {
-  // Estado
   int _passoAtual = 0;
-
-  // Agora armazenamos os dados do barbeiro selecionado como um Map vindo do Firebase
   Map<String, dynamic>? _barbeiroSelecionado;
-
   DateTime? _dataSelecionada;
   String? _horarioSelecionado;
   bool _salvando = false;
 
-  // Horários fixos (Você pode mover isso pro Firebase no futuro se quiser)
   final List<String> _horarios = [
     '09:00', '09:30', '10:00', '10:30', '11:00',
     '13:00', '13:30', '14:00', '14:30', '15:00',
     '16:00', '16:30', '17:00', '17:30', '18:00',
   ];
 
-  // Navegação
   void _proximoPasso() {
     if (_passoAtual < 3) {
       setState(() {
@@ -52,7 +48,10 @@ class _AppointmentPageState extends State<AppointmentPage> {
     }
   }
 
-  // Salvar no Firebase
+  String _formatarDataSimples(DateTime data) {
+    return "${data.year}-${data.month.toString().padLeft(2, '0')}-${data.day.toString().padLeft(2, '0')}";
+  }
+
   Future<void> _confirmarAgendamento() async {
     setState(() {
       _salvando = true;
@@ -62,21 +61,24 @@ class _AppointmentPageState extends State<AppointmentPage> {
       final usuario = FirebaseAuth.instance.currentUser;
       if (usuario == null) return;
 
+      final dataSimples = _formatarDataSimples(_dataSelecionada!);
+
       await FirebaseFirestore.instance.collection('appointments').add({
         'userId': usuario.uid,
         'userName': usuario.displayName ?? 'Cliente',
         'userEmail': usuario.email,
         'serviceName': widget.servico.nome,
         'servicePrice': widget.servico.preco,
-        'barberName': _barbeiroSelecionado!['nome'], // Pega do Map selecionado
-        'date': _dataSelecionada!.toIso8601String(),
+        'barberName': _barbeiroSelecionado!['nome'],
+        'barberId': _barbeiroSelecionado!['id'], 
+        'date': _dataSelecionada!.toIso8601String(), 
+        'data_simples': dataSimples, 
         'time': _horarioSelecionado,
         'status': 'Confirmado',
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
-        // Navegar para a tela de sucesso
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const AgendamentoSucessoPage()),
@@ -91,6 +93,33 @@ class _AppointmentPageState extends State<AppointmentPage> {
           _salvando = false;
         });
       }
+    }
+  }
+
+  Future<void> _abrirCalendario() async {
+    final DateTime? dataEscolhida = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 60)),
+      locale: const Locale('pt', 'BR'), 
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            primaryColor: Colors.blue,
+            colorScheme: const ColorScheme.light(primary: Colors.blue),
+            buttonTheme: const ButtonThemeData(textTheme: ButtonTextTheme.primary),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (dataEscolhida != null) {
+      setState(() {
+        _dataSelecionada = dataEscolhida;
+        _horarioSelecionado = null; 
+      });
     }
   }
 
@@ -170,7 +199,6 @@ class _AppointmentPageState extends State<AppointmentPage> {
     );
   }
 
-  // Validação
   bool _podeProsseguir() {
     if (_passoAtual == 0) return _barbeiroSelecionado != null;
     if (_passoAtual == 1) return _dataSelecionada != null;
@@ -178,7 +206,6 @@ class _AppointmentPageState extends State<AppointmentPage> {
     return true;
   }
 
-  // Conteúdo Dinâmico
   Widget _conteudoPassoAtual() {
     switch (_passoAtual) {
       case 0:
@@ -194,7 +221,6 @@ class _AppointmentPageState extends State<AppointmentPage> {
     }
   }
 
-  // Passo 1: Seleção de Barbeiro (Agora com Firebase!)
   Widget _selecaoBarbeiro() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,33 +229,18 @@ class _AppointmentPageState extends State<AppointmentPage> {
         const SizedBox(height: 16),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            // Conecta na coleção 'barbeiros' que você criou no Admin
             stream: FirebaseFirestore.instance.collection('barbeiros').snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(child: Text("Nenhum barbeiro disponível no momento."));
-              }
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Nenhum barbeiro disponível."));
 
               return ListView.builder(
                 itemCount: snapshot.data!.docs.length,
                 itemBuilder: (context, index) {
                   var doc = snapshot.data!.docs[index];
-                  // Converte o documento para Map
                   var dados = doc.data() as Map<String, dynamic>;
-
-                  // Adiciona o ID do documento aos dados caso precise
                   dados['id'] = doc.id;
 
-                  String nome = dados['nome'] ?? 'Sem Nome';
-                  String foto = dados['foto'] ?? '';
-                  double avaliacao = (dados['avaliacao'] ?? 5.0).toDouble();
-
-                  // Verifica se é o selecionado comparando o ID ou Nome
-                  // Aqui comparamos o objeto Map inteiro por simplicidade
                   final selecionado = _barbeiroSelecionado != null && _barbeiroSelecionado!['id'] == doc.id;
 
                   return Card(
@@ -241,26 +252,128 @@ class _AppointmentPageState extends State<AppointmentPage> {
                     ),
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     child: ListTile(
-                      onTap: () {
-                        setState(() {
-                          _barbeiroSelecionado = dados;
-                        });
-                      },
-                      leading: CircleAvatar(
-                        radius: 25,
-                        backgroundColor: Colors.grey.shade200,
-                        backgroundImage: (foto.isNotEmpty) ? NetworkImage(foto) : null,
-                        child: (foto.isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,
-                      ),
-                      title: Text(nome, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      // Se não tiver especialidade cadastrada, mostra um texto padrão
+                      onTap: () => setState(() => _barbeiroSelecionado = dados),
+                      leading: ImagemUniversal(urlOuBase64: dados['foto'], width: 50, height: 50, radius: 25),
+                      title: Text(dados['nome'] ?? 'Sem Nome', style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(dados['especialidade'] ?? 'Barbeiro Profissional'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 20),
-                          Text(avaliacao.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                        ],
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _selecaoData() {
+    String textoData = _dataSelecionada == null 
+        ? "Toque para escolher" 
+        : "${_dataSelecionada!.day}/${_dataSelecionada!.month}/${_dataSelecionada!.year}";
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.calendar_month, size: 80, color: Colors.blue),
+          const SizedBox(height: 20),
+          const Text("Qual dia você prefere?", style: TextStyle(fontSize: 18, color: Colors.grey)),
+          const SizedBox(height: 20),
+          InkWell(
+            onTap: _abrirCalendario,
+            borderRadius: BorderRadius.circular(30),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Text(
+                textoData,
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _selecaoHorario() {
+    if (_barbeiroSelecionado == null || _dataSelecionada == null) return const Center(child: Text("Selecione Barbeiro e Data primeiro"));
+
+    final dataSimples = _formatarDataSimples(_dataSelecionada!);
+    final barberId = _barbeiroSelecionado!['id']; // USANDO ID PARA BUSCA MAIS PRECISA
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Horários Disponíveis', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+               "${_dataSelecionada!.day}/${_dataSelecionada!.month}",
+               style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            )
+          ],
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          // BUSCA REFINADA: Usa ID do barbeiro e data_simples
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('appointments')
+                .where('barberId', isEqualTo: barberId) // Busca por ID
+                .where('data_simples', isEqualTo: dataSimples)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+
+              List<String> horariosOcupados = [];
+              if (snapshot.hasData) {
+                for (var doc in snapshot.data!.docs) {
+                  final dados = doc.data() as Map<String, dynamic>;
+                  // Bloqueia se o status NÃO for cancelado
+                  if (dados['status'] != 'Cancelado') {
+                    horariosOcupados.add(dados['time'] as String);
+                  }
+                }
+              }
+
+              return GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3, childAspectRatio: 2.2, crossAxisSpacing: 10, mainAxisSpacing: 10,
+                ),
+                itemCount: _horarios.length,
+                itemBuilder: (context, index) {
+                  final horario = _horarios[index];
+                  final estaOcupado = horariosOcupados.contains(horario);
+                  final selecionado = _horarioSelecionado == horario;
+
+                  return GestureDetector(
+                    // Se ocupado, bloqueia clique
+                    onTap: estaOcupado ? null : () => setState(() => _horarioSelecionado = horario),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: estaOcupado ? Colors.grey.shade100 : (selecionado ? Colors.blue : Colors.white),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: estaOcupado ? Colors.grey.shade300 : (selecionado ? Colors.blue : Colors.grey.shade300),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        estaOcupado ? "Ocupado" : horario, // Feedback visual claro
+                        style: TextStyle(
+                          color: estaOcupado ? Colors.grey : (selecionado ? Colors.white : Colors.black87),
+                          decoration: estaOcupado ? TextDecoration.lineThrough : null,
+                          fontWeight: FontWeight.bold,
+                          fontSize: estaOcupado ? 12 : 14,
+                        ),
                       ),
                     ),
                   );
@@ -273,121 +386,62 @@ class _AppointmentPageState extends State<AppointmentPage> {
     );
   }
 
-  // Passo 2: Data
-  Widget _selecaoData() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Escolha a Data', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        Expanded(
-          child: Theme(
-            data: ThemeData.light().copyWith(
-              colorScheme: ColorScheme.light(
-                primary: Colors.blue.shade400,
-                onPrimary: Colors.white,
-                onSurface: Colors.black,
-              ),
-            ),
-            child: CalendarDatePicker(
-              initialDate: DateTime.now(),
-              firstDate: DateTime.now(),
-              lastDate: DateTime.now().add(const Duration(days: 30)),
-              onDateChanged: (data) => setState(() => _dataSelecionada = data),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Passo 3: Horário
-  Widget _selecaoHorario() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Escolha o Horário', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        Expanded(
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 2.5,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
-            ),
-            itemCount: _horarios.length,
-            itemBuilder: (context, index) {
-              final horario = _horarios[index];
-              final selecionado = _horarioSelecionado == horario;
-              return ChoiceChip(
-                label: Text(horario),
-                selected: selecionado,
-                onSelected: (bool sel) => setState(() => _horarioSelecionado = sel ? horario : null),
-                selectedColor: Colors.blue.shade400,
-                labelStyle: TextStyle(color: selecionado ? Colors.white : Colors.black),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Passo 4: Resumo
   Widget _resumo() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Resumo do Agendamento', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 24),
-        _linhaResumo(Icons.content_cut, 'Serviço', widget.servico.nome),
-        _linhaResumo(Icons.attach_money, 'Valor', widget.servico.preco),
-        const Divider(),
-        // Pega o nome do Map selecionado
-        _linhaResumo(Icons.person, 'Barbeiro', _barbeiroSelecionado?['nome'] ?? 'Não selecionado'),
-        _linhaResumo(Icons.calendar_today, 'Data', _dataSelecionada?.toLocal().toString().split(' ')[0] ?? ''),
-        _linhaResumo(Icons.access_time, 'Horário', _horarioSelecionado ?? ''),
+        const SizedBox(height: 20),
+        const Icon(Icons.check_circle_outline, size: 80, color: Colors.blue),
+        const SizedBox(height: 20),
+        const Text("Tudo pronto?", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 30),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(20)),
+          child: Column(
+            children: [
+              _linhaResumo(Icons.person, 'Profissional', _barbeiroSelecionado?['nome']),
+              _linhaResumo(Icons.calendar_today, 'Data', "${_dataSelecionada!.day}/${_dataSelecionada!.month}/${_dataSelecionada!.year}"),
+              _linhaResumo(Icons.access_time, 'Horário', _horarioSelecionado ?? ''),
+              const Divider(height: 30),
+              _linhaResumo(Icons.content_cut, 'Serviço', widget.servico.nome),
+              _linhaResumo(Icons.attach_money, 'Valor', widget.servico.preco),
+            ],
+          ),
+        ),
       ],
     );
   }
 
-  Widget _linhaResumo(IconData icone, String rotulo, String valor) {
+  Widget _linhaResumo(IconData icon, String label, String? value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icone, color: Colors.blue.shade400),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(rotulo, style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              Text(valor, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
+          Icon(icon, color: Colors.blue, size: 20),
+          const SizedBox(width: 12),
+          Text("$label: ", style: const TextStyle(color: Colors.grey)),
+          Expanded(child: Text(value ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), textAlign: TextAlign.end)),
         ],
       ),
     );
   }
 
-  // Visual
   Widget _indicadorPasso(int passo, String rotulo) {
     final ativo = _passoAtual >= passo;
     return Column(
       children: [
         CircleAvatar(
-          radius: 15,
+          radius: 12,
           backgroundColor: ativo ? Colors.blue.shade800 : Colors.blue.shade200,
-          child: Text((passo + 1).toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          child: Text((passo + 1).toString(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
         ),
         const SizedBox(height: 4),
-        Text(rotulo, style: TextStyle(color: ativo ? Colors.white : Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(rotulo, style: TextStyle(color: ativo ? Colors.white : Colors.white70, fontSize: 10, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
   Widget _linha() {
-    return Container(width: 30, height: 2, color: Colors.white54, margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 15));
+    return Container(width: 20, height: 2, color: Colors.white54, margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 12));
   }
 }

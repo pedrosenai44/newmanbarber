@@ -10,6 +10,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # Firebase Core
   firebase_core: ^3.2.0
@@ -17,10 +19,14 @@ dependencies:
   firebase_auth: ^5.1.2
   # Firestore Database
   cloud_firestore: ^5.1.0
-  # Firebase Storage (Para imagens)
+  # Firebase Storage
   firebase_storage: ^12.1.0
-  # Image Picker (Para Camera/Galeria)
+  # Image Picker
   image_picker: ^1.1.2
+  # Cache de Imagens
+  cached_network_image: ^3.3.1
+  # Formatação de Datas (Atualizado para ser compatível com flutter_localizations)
+  intl: any
 
   cupertino_icons: ^1.0.8
 
