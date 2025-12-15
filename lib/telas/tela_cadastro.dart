@@ -15,7 +15,6 @@ class _SignUpPageState extends State<SignUpPage> {
   final _senhaController = TextEditingController();
   bool _carregando = false;
 
-  // LÓGICA DE CADASTRO ATUALIZADA
   Future<void> _cadastrar() async {
     if (_nomeController.text.isEmpty || _emailController.text.isEmpty || _senhaController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha todos os campos.')));
@@ -25,39 +24,34 @@ class _SignUpPageState extends State<SignUpPage> {
     setState(() => _carregando = true);
 
     try {
-      String role = 'client'; // Padrão é cliente
+      String role = 'client'; 
 
-      // 1. VERIFICAR SE O EMAIL ESTÁ NA LISTA DE BARBEIROS PRÉ-CADASTRADOS
-      final email = _emailController.text.trim().toLowerCase();
+      final emailNormalizado = _emailController.text.trim().toLowerCase();
+
       final queryBarbeiro = await FirebaseFirestore.instance
           .collection('barbeiros')
-          .where('email', isEqualTo: email)
+          .where('email', isEqualTo: emailNormalizado)
           .limit(1)
           .get();
 
       if (queryBarbeiro.docs.isNotEmpty) {
-        // Se encontrou, este usuário é um barbeiro!
         role = 'barber';
       }
 
-      // 2. CRIAR A CONTA DE AUTENTICAÇÃO
       final credencial = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
+        email: emailNormalizado,
         password: _senhaController.text.trim(),
       );
 
-      // 3. ENVIAR EMAIL DE VERIFICAÇÃO
       if (credencial.user != null && !credencial.user!.emailVerified) {
         await credencial.user!.sendEmailVerification();
       }
 
-      // 4. ATUALIZAR NOME NO AUTH
       await credencial.user?.updateDisplayName(_nomeController.text.trim());
 
-      // 5. SALVAR DADOS NO FIRESTORE COM A ROLE CORRETA
       await FirebaseFirestore.instance.collection('users').doc(credencial.user!.uid).set({
         'name': _nomeController.text.trim(),
-        'email': email,
+        'email': emailNormalizado,
         'createdAt': FieldValue.serverTimestamp(),
         'role': role, 
       });
@@ -69,7 +63,7 @@ class _SignUpPageState extends State<SignUpPage> {
                   title: const Text('Cadastro Realizado!'),
                   content: Text(
                     role == 'barber'
-                      ? 'Bem-vindo, Barbeiro! Enviamos um link de verificação para o seu email. Confirme para poder fazer o login.'
+                      ? 'Bem-vindo, Barbeiro! Sua conta profissional foi ativada. Verifique seu email antes de logar.'
                       : 'Enviamos um link de verificação para o seu email. Por favor, confirme para poder fazer o login.'
                   ),
                   actions: [

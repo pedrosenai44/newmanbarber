@@ -23,14 +23,14 @@ class MyApp extends StatelessWidget {
       ),
       debugShowCheckedModeBanner: false,
       
-      // Configuração de localização para o Calendário funcionar em Português
+      // calendario em portugues
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('pt', 'BR'), // Português do Brasil
+        Locale('pt', 'BR'), // Brasil
       ],
       
       home: const LoginPage(), 

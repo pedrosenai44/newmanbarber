@@ -15,19 +15,19 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
   @override
   void initState() {
     super.initState();
-    // Configuração animação
+    // animacao config
     _controlador = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
 
-    // Efeito elástico
+    // efeito
     _animacaoEscala = CurvedAnimation(
       parent: _controlador,
       curve: Curves.elasticOut,
     );
 
-    // Iniciar animação
+    // animaçao
     _controlador.forward();
   }
 
@@ -40,8 +40,8 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
   @override
   Widget build(BuildContext context) {
     // Cores
-    const Color corFundo = Color(0xFF1E1E2C); // Azul escuro
-    const Color corSucesso = Color(0xFF4CAF50); // Verde
+    const Color corFundo = Color(0xFF1E1E2C); // azul escuro
+    const Color corSucesso = Color(0xFF4CAF50); // verde
 
     return Scaffold(
       backgroundColor: corFundo,
@@ -52,9 +52,9 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
             clipBehavior: Clip.none,
             alignment: Alignment.topCenter,
             children: [
-              // 1. Card Branco
+              // card branco
               Container(
-                margin: const EdgeInsets.only(top: 50), // Espaço topo
+                margin: const EdgeInsets.only(top: 50), // espaco topo
                 padding: const EdgeInsets.only(top: 70, left: 24, right: 24, bottom: 30),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -68,7 +68,7 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
                   ],
                 ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min, // Tamanho mínimo
+                  mainAxisSize: MainAxisSize.min, // tamanho
                   children: [
                     const Text(
                       'SUCESSO!',
@@ -91,12 +91,12 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
                     ),
                     const SizedBox(height: 32),
                     
-                    // Botão Voltar
+                    // voltar ao inicio
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          // Voltar Home
+                          // para a principal
                           Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(builder: (context) => const HomePage()),
@@ -126,7 +126,7 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
                 ),
               ),
 
-              // 2. Ícone Animado
+              // 2. icone com animacao
               Positioned(
                 top: 0,
                 child: ScaleTransition(
@@ -137,7 +137,7 @@ class _PaginaSucessoAgendamentoState extends State<AgendamentoSucessoPage> with 
                     decoration: BoxDecoration(
                       color: corSucesso,
                       shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4), // Borda branca
+                      border: Border.all(color: Colors.white, width: 4), // bordinha branca
                       boxShadow: [
                         BoxShadow(
                           color: corSucesso.withOpacity(0.4),
